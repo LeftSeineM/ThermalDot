@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+.build-cache/
+.cache/
+publish/
+release/
+data/
+*.user
+*.suo
+*.log
+.vs/
+.env
+.env.*
