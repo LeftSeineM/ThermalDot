@@ -6,7 +6,7 @@
 
 ## 下载与安装
 
-前往 [Releases](https://github.com/LeftSeineM/ThermalDot/releases/latest)，下载 **温度球-1.3.0-安装版.exe**。普通使用者只需这个文件，无需预装 .NET。
+前往 [Releases](https://github.com/LeftSeineM/ThermalDot/releases/latest)，下载 **ThermalDot-1.3.0-Setup.exe（安装版）**。普通使用者只需这个文件，无需预装 .NET。
 
 1. 运行安装包，选择安装位置。可安装到 D 盘。
 2. 安装完成时，可打开随附的官方 PawnIO 驱动向导；CPU 温度通常需要它。安装由使用者确认，驱动可单独卸载。
