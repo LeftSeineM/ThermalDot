@@ -1,4 +1,4 @@
-﻿#define ProductVersion "1.3.0"
+#define ProductVersion "1.4.0"
 #ifndef PackageRoot
   #define PackageRoot SourcePath
 #endif

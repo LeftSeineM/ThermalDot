@@ -37,7 +37,7 @@ public sealed class Reading
     public double? VramTotalGiB { get; set; }
     public double? MemoryLoad => SensorReader.CapacityPercent(MemoryUsedGiB, MemoryTotalGiB);
     public double? VramLoad => SensorReader.CapacityPercent(VramUsedGiB, VramTotalGiB);
-    public string Version => "1.3.0";
+    public string Version => "1.4.0";
     public string CpuName { get; set; } = "CPU";
     public string GpuName { get; set; } = "GPU";
     public string CpuSource { get; set; } = "";
@@ -176,9 +176,20 @@ public static class Program
             Console.WriteLine(JsonSerializer.Serialize(LenovoCharge.Execute(args[1])));
             return;
         }
+        if (args.Length == 2 && args[0] == "--screen-probe")
+        {
+            File.WriteAllText(args[1], JsonSerializer.Serialize(DisplayTimeout.Read(), Json)); return;
+        }
+        if (args.Length == 3 && args[0] == "--render-screen")
+        {
+            var appPreview = new System.Windows.Application();
+            var preview = new DotWindow(preview: true);
+            preview.RenderScreenPreview(JsonSerializer.Deserialize<DisplayTimeoutState>(File.ReadAllText(args[1])) ?? new(), args[2]);
+            preview.Close(); appPreview.Shutdown(); return;
+        }
         if (args.Length == 2 && args[0] == "--power-probe")
         {
-            File.WriteAllText(args[1], JsonSerializer.Serialize(new { Power = PowerControl.Read(), Charge = PowerControl.ReadCharge().GetAwaiter().GetResult() }, Json));
+            File.WriteAllText(args[1], JsonSerializer.Serialize(new { Power = PowerControl.Read(), Charge = PowerControl.ReadCharge().GetAwaiter().GetResult(), Screen = DisplayTimeout.Read() }, Json));
             return;
         }
         if (args.Length == 3 && args[0] == "--render-power")
@@ -202,6 +213,7 @@ public static class Program
         }
         if (args.Length == 1 && args[0] == "--self-test")
         {
+            DisplayTimeoutTests.Run();
             if (PowerControl.ModeName(PowerControl.ModeId("省电")) != "省电" || PowerControl.ModeName(PowerControl.ModeId("平衡")) != "平衡" || PowerControl.ModeName(PowerControl.ModeId("性能")) != "性能" || PowerControl.ModeName(Guid.NewGuid()) != null)
                 throw new Exception("Unknown Windows power modes must not be mislabeled");
             if (LenovoCharge.Execute("9").Mode.HasValue || LenovoCharge.Execute("9").Error == "") throw new Exception("Invalid charging writes must be rejected before loading vendor code");
@@ -219,7 +231,7 @@ public static class Program
             var missing = new Reading(); SensorReader.ApplyNvidiaCsv(missing, "NVIDIA RTX 4060, N/A, N/A, N/A, 8192");
             if (missing.Gpu.HasValue || missing.GpuLoad.HasValue || missing.VramLoad.HasValue)
                 throw new Exception("N/A must stay unavailable");
-            File.WriteAllText(System.IO.Path.Combine(Data, "self-test.txt"), "PASS: invalid readings, zero/full/missing capacity, MiB-to-GiB conversion, NVIDIA fallback/N/A, CPU/GPU thresholds");
+            File.WriteAllText(System.IO.Path.Combine(Data, "self-test.txt"), "PASS: invalid readings, zero/full/missing capacity, MiB-to-GiB conversion, NVIDIA fallback/N/A, CPU/GPU thresholds; screen timeouts: never/custom, AC/DC isolation, rollback, stale-plan protection, readback verification");
             return;
         }
         if (args.Length == 3 && args[0] == "--render")
@@ -300,7 +312,7 @@ public sealed partial class DotWindow : Window
             AllowsTransparency = true, Background = Brushes.Transparent, ShowInTaskbar = false, Topmost = true, Content = detail, FontFamily = FontFamily };
         InitializePowerView();
         ((Button)detail.FindName("ClosePanel")).Click += (_, _) => panel.Hide();
-        panel.Deactivated += (_, _) => { if (!IsMouseOver) panel.Hide(); };
+        panel.Deactivated += (_, _) => { if (!IsMouseOver && !IsScreenDropDownOpen) panel.Hide(); };
         MouseLeftButtonDown += (_, e) => { pressedAt = e.GetPosition(this); dragging = false; CaptureMouse(); };
         MouseMove += (_, e) =>
         {
@@ -465,6 +477,7 @@ public sealed partial class DotWindow : Window
         void Item(string label, Action action, bool isChecked = false) { var i = new MenuItem { Header = label, IsChecked = isChecked }; i.Click += (_, _) => action(); menu.Items.Add(i); }
         Item("查看温度详情", () => TogglePanel(true));
         Item("电源与电池", () => { TogglePanel(true); ShowPowerView(); });
+        Item("屏幕熄灭时间", () => { TogglePanel(true); ShowScreenView(); });
         Item("CPU 温度读取组件…", Distribution.OpenCpuComponent);
         Item("使用说明 / 关于", Distribution.ShowHelp);
         Item("第三方许可", Distribution.ShowLicenses);

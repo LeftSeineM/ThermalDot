@@ -27,9 +27,10 @@ public sealed partial class DotWindow
         powerView = (Grid)XamlReader.Parse(PowerXaml);
         panel.Content = null;
         var pages = new Grid(); pages.Children.Add(detail); pages.Children.Add(powerView);
-        powerView.Visibility = Visibility.Collapsed; panel.Content = pages;
+        powerView.Visibility = Visibility.Collapsed; InitializeScreenView(pages); panel.Content = pages;
         ((Button)detail.FindName("OpenPower")).Click += (_, _) => ShowPowerView();
         PowerButton("Back").Click += (_, _) => { powerView.Visibility = Visibility.Collapsed; detail.Visibility = Visibility.Visible; };
+        PowerButton("OpenScreen").Click += (_, _) => ShowScreenView();
         PowerButton("ClosePower").Click += (_, _) => panel.Hide();
         PowerButton("Efficiency").Click += async (_, _) => await ChangePower("省电");
         PowerButton("Balanced").Click += async (_, _) => await ChangePower("平衡");
@@ -46,7 +47,7 @@ public sealed partial class DotWindow
     }
     private async void ShowPowerView()
     {
-        detail.Visibility = Visibility.Collapsed; powerView.Visibility = Visibility.Visible;
+        screenView.Visibility = Visibility.Collapsed; detail.Visibility = Visibility.Collapsed; powerView.Visibility = Visibility.Visible;
         if (!isPreview) await RefreshPower();
     }
     private async Task RefreshPower()
@@ -145,7 +146,7 @@ public sealed partial class DotWindow
    <Button x:Name="ClosePower" Content="×" FontSize="19" Background="Transparent" BorderThickness="0" Padding="0" Width="25" Height="25" HorizontalAlignment="Right" VerticalAlignment="Top"/>
    <Border Grid.Row="1" Background="#263E42" CornerRadius="13" Padding="14,8">
     <Grid><TextBlock x:Name="BatteryValue" Text="—" Foreground="#DFFAF0" FontFamily="Segoe UI" FontSize="30" FontWeight="SemiBold" VerticalAlignment="Center"/>
-     <StackPanel Margin="110,7,0,0"><TextBlock Text="BATTERY" Foreground="#82B5AA" FontSize="9"/><TextBlock x:Name="Supply" Foreground="#B3D6CE" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"/></StackPanel>
+     <StackPanel Margin="110,0,0,0"><TextBlock Text="BATTERY" Foreground="#82B5AA" FontSize="9"/><TextBlock x:Name="Supply" Foreground="#B3D6CE" FontSize="10" Margin="0,3,0,0" TextWrapping="Wrap"/><Button x:Name="OpenScreen" Content="屏幕熄灭时间  ›" Foreground="#67E7C1" FontSize="10" Background="Transparent" BorderThickness="0" Padding="0,3" HorizontalAlignment="Left" Margin="0,2,0,0"/></StackPanel>
     </Grid>
    </Border>
    <StackPanel Grid.Row="3">
