@@ -25,6 +25,8 @@
 
 电源、充电和屏幕设置只在使用者主动点击时修改；程序会读取并显示切换结果。
 
+Clash 接入步骤、故障排查与下一版手动连接方案见 [如何连接 Clash](如何连接clash.md)。
+
 ## 兼容范围
 
 面向 Windows 10 2004 及以上 / Windows 11 的 Intel、AMD x64 电脑。不支持 ARM Windows、32 位 Windows 和 macOS。
