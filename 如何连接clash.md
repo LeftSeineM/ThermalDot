@@ -95,3 +95,127 @@
 当前行为以本仓库 1.6.0 的 src/ClashMonitor.cs、src/ProxyControl.cs 和 src/SystemProxy.cs 为准。
 
 控制字段可参照 [Mihomo 官方全局配置文档](https://wiki.metacubex.one/config/general/)；接口定义参照 [Mihomo 官方 API 文档](https://wiki.metacubex.one/api/)。这些资料解释协议，不代表温度球已完成所有客户端兼容。
+## 自己修改源码 ZIP 并生成 EXE
+
+如果你的客户端无法自动识别，可以下载源码自行适配。本项目提供源码和构建说明；不同客户端的适配、调试和后续维护由修改者自行完成。
+
+### 1. 下载和解压
+
+在本 Release 的 Assets 中下载 **ThermalDot-1.6.0-Source-With-Guide.zip**，这是补充本说明后的源码快照。原始 ThermalDot-1.6.0-Source.zip 及 GitHub 自动生成的 Source code (zip) 对应原发布内容，不含后来补充的说明。
+
+把源码包完整解压到例如 D:\Software\ThermalDot-Source。确认该目录下直接有 Build.ps1、setup.iss、src 和 components。不要在压缩软件预览窗口里编辑，也不要修改安装包中的 EXE。
+
+修改的是解压后的 C# 源码，完成后重新编译；改 ZIP 或 YAML 本身不会自动生成新的程序。
+
+### 2. 按自己的需求改对应文件
+
+| 需求 | 文件与位置 |
+| --- | --- |
+| 更换自动发现配置文件的位置 | src/ClashMonitor.cs 的 ClashEndpoint.Discover() |
+| 调整控制地址/密钥的读取方式 | 同文件的 Parse()、Scalar()、Discover() |
+| 更换快捷节点筛选方式 | src/ProxyControl.cs 的 Parse() 中 state.Nodes 和 NodeLabel() |
+| 改全局、规则策略组选择逻辑 | src/ProxyControl.cs 的 Selectable、ruleGroup、Selections |
+| 增加连接设置、节点按钮或文案 | src/NetworkView.cs |
+| 为自定义逻辑增加验证 | src/ProxyControlTests.cs、src/NetworkTests.cs |
+
+**最小改动：客户端已有本地 YAML，且包含实际生效的 external-controller 与 secret。**
+
+在 Discover() 中找到计算 file 的那一行，用自己的真实配置文件位置替换，例如：
+
+~~~csharp
+string file = Environment.ExpandEnvironmentVariables(
+    @"%APPDATA%\YourClashClient\config.yaml");
+~~~
+
+YourClashClient 是占位名称，不是任何客户端的已验证路径。先在自己的客户端中查清实际文件位置；保留后面的存在性、大小检查和 Parse 调用。只复制一份可能过期的配置会造成端口或密钥变化后失联。
+
+若客户端没有符合格式的文件，可在 Discover() 中改为读取自己保存在本机的独立“连接信息文件”，文件只包含控制地址和密钥。例如将该方法原本的 file 路径改成：
+
+~~~csharp
+string file = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+    "ThermalDot", "clash-connection.yaml");
+~~~
+
+然后在这个目录自行创建 clash-connection.yaml：
+
+~~~yaml
+external-controller: 127.0.0.1:9090
+secret: "这里填自己的实际控制密钥"
+~~~
+
+这只是**自己修改源码后的接入方法**，官方 1.6.0 不会自动读取这个文件。填写地址不会在 Clash 内开启 API，必须先确认客户端确实监听此地址。不要把个人密钥、订阅地址或节点凭据写死在源码、上传 GitHub 或装进分享 ZIP；上述独立文件属于本机私有文件。通用设置界面的加密保存方案仍见上一节。
+
+这里只支持现有代码能处理的本机 HTTP API。保留回环地址校验、禁用代理及重定向的保护。HTTPS、命名管道以及不同结构的配置格式需要额外实现，不能只换路径就宣称兼容。
+
+**如果只想换快捷节点：**在 state.Nodes 的查询中将美国名称匹配改为自己的明确名称集合，保持最多两个，并同步调整 NodeLabel() 的显示文字。还需确认 GLOBAL 与主要规则 Selector 都包含所选节点；只改按钮文字不会改变实际目标。若要支持任意数量，需要同时修改 NetworkView.cs 的固定两按钮布局和事件处理。改完补充对应测试，不要让测试仍只验证旧名称。
+
+### 3. 准备构建工具
+
+在 Windows x64 上安装 **.NET 10 SDK**，不要只装 Runtime。项目发布时使用 SDK 10.0.400；源码没有锁定 SDK 补丁号，其他 .NET 10 SDK 需自行验证。首次构建需要联网恢复 NuGet 包。
+
+- 官方 .NET SDK 下载：https://dotnet.microsoft.com/download/dotnet/10.0
+- 仅生成单文件 EXE 不需要 Inno Setup。
+- 需要安装向导时另装 Inno Setup 6；原发布使用 6.7.3。官方站点：https://jrsoftware.org/isinfo.php
+
+在 PowerShell 中运行 dotnet --list-sdks，确认能看到 10.0.x。若命令找不到，重新打开 PowerShell，或使用 dotnet.exe 的完整路径。
+
+### 4. 只生成可执行文件
+
+以下示例假设源码完整解压在 D:\Software\ThermalDot-Source。在 PowerShell 中执行：
+
+~~~powershell
+Set-Location 'D:\Software\ThermalDot-Source'
+$env:DOTNET_CLI_HOME = "$PWD\.build-cache\dotnet-home"
+$env:NUGET_PACKAGES = "$PWD\.build-cache\nuget-packages"
+$env:NUGET_HTTP_CACHE_PATH = "$PWD\.build-cache\nuget-http-cache"
+$env:DOTNET_BUNDLE_EXTRACT_BASE_DIR = "$PWD\.build-cache\bundle-cache"
+$env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
+
+dotnet restore .\src\ThermalDot.csproj --locked-mode
+if ($LASTEXITCODE -ne 0) { throw '依赖恢复失败，请先处理错误' }
+
+dotnet publish .\src\ThermalDot.csproj --no-restore -c Release -o .\publish
+if ($LASTEXITCODE -ne 0) { throw '编译失败，请先处理错误' }
+~~~
+
+输出文件：**publish\ThermalDot.exe**。
+
+项目已经配置 win-x64、自包含运行时和单文件发布，接收者无需另装 .NET。不要从 src\bin 中随意挑一个 EXE 分享。CPU 温度所需的 PawnIO 和硬件兼容条件仍然存在，单文件并不意味着免驱动。
+
+### 5. 验证自己的修改
+
+先退出旧温度球，否则同账户单实例逻辑可能只唤回旧进程。自检可以这样执行：
+
+~~~powershell
+$p = Start-Process '.\publish\ThermalDot.exe' -ArgumentList '--self-test' -Wait -PassThru
+if ($p.ExitCode -ne 0) { throw '自检失败' }
+~~~
+
+自检主要验证逻辑，不代替真实客户端测试。再启动自己的新 EXE，确认控制连接、模式回读、正确的组/节点、错误密钥提示和客户端重启后恢复。测试切换前保存当前代理状态，完成后自行恢复需要的状态；不要只看到按钮变色就认定成功。
+
+若将代码改成不同的节点/组规则，应同步修改测试用例验证新行为，而不是删除失败的检查。不要把测试产生的 preferences.json、network.json、日志或连接密钥打进源码包。
+
+### 6. 生成安装包（可选）
+
+确认自己的 Inno Setup 实际安装路径，以下只是常见路径示例。在源码根目录执行：
+
+~~~powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build.ps1 -DotNet "dotnet" -InnoCompiler "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" -CacheRoot "D:\Software\ThermalDot-Source\.build-cache"
+~~~
+
+这是针对本次构建进程的执行策略，不修改系统全局执行策略。Build.ps1 会先校验附带的官方 PawnIO 安装程序，再恢复依赖、发布 EXE 和编译安装包。
+
+输出：**release\温度球-1.6.0-安装版.exe**。
+
+找不到 ISCC.exe 时，修正实际路径；缺少组件或校验不匹配时，重新取得完整源码包，不要删掉校验来绕过问题。修改 C# 源码不会自动更新版本号；若要另发自定义版本，应同步调整 csproj、Program.cs、Distribution.cs、setup.iss、Build.ps1 和说明中的版本信息，并明确注明为自行修改版。
+
+原 setup.iss 使用固定 AppId。自用更新可以保留；如果希望与官方版并存，需要另行调整安装 AppId、程序身份、数据目录和单实例名称，不要以为仅改 EXE 文件名即可并存。分享时保留随包的第三方版权和许可说明。
+
+### 构建失败时
+
+- 没有 .NET 10 SDK：安装正确 SDK，再打开一个新的 PowerShell。
+- NuGet 恢复失败：检查网络与错误信息；保留 packages.lock.json，不要随意升级依赖绕过问题。
+- EXE 被占用：退出正在运行的旧程序再构建。
+- 编译成功但无法连接：重新检查实际控制地址、密钥、配置格式与客户端 API；这属于适配问题，不是压缩包问题。
+- 双击仍显示原来的界面：确认启动的是新生成的 publish\ThermalDot.exe，且旧进程已退出。
