@@ -37,7 +37,7 @@ public sealed class Reading
     public double? VramTotalGiB { get; set; }
     public double? MemoryLoad => SensorReader.CapacityPercent(MemoryUsedGiB, MemoryTotalGiB);
     public double? VramLoad => SensorReader.CapacityPercent(VramUsedGiB, VramTotalGiB);
-    public string Version => "1.5.0";
+    public string Version => "1.6.0";
     public string CpuName { get; set; } = "CPU";
     public string GpuName { get; set; } = "GPU";
     public string CpuSource { get; set; } = "";
@@ -183,7 +183,7 @@ public static class Program
             var sampler = new NetworkSampler(); sampler.Read(); Thread.Sleep(1100);
             var network = sampler.Read();
             var proxy = ClashMonitor.Read("", CancellationToken.None).GetAwaiter().GetResult();
-            File.WriteAllText(args[1], JsonSerializer.Serialize(new { Network = network, Proxy = proxy }, Json)); return;
+            File.WriteAllText(args[1], JsonSerializer.Serialize(new { Network = network, Proxy = proxy, Control = ProxyControl.Read(CancellationToken.None).GetAwaiter().GetResult() }, Json)); return;
         }
         if (args.Length == 3 && args[0] == "--render-network")
         {
@@ -192,7 +192,7 @@ public static class Program
             var preview = new DotWindow(preview: true);
             preview.RenderNetworkPreview(json.RootElement.GetProperty("Network").Deserialize<NetworkReading>() ?? new(),
                 json.RootElement.GetProperty("Proxy").Deserialize<ProxyReading>() ?? new(),
-                json.RootElement.TryGetProperty("Paused", out var paused) && paused.GetBoolean(), args[2]);
+                json.RootElement.TryGetProperty("Paused", out var paused) && paused.GetBoolean(), args[2], json.RootElement.TryGetProperty("Control", out var control) ? control.Deserialize<ProxyControlState>() : null);
             preview.Close(); appPreview.Shutdown(); return;
         }
         if (args.Length == 2 && args[0] == "--screen-probe")
@@ -232,7 +232,7 @@ public static class Program
         }
         if (args.Length == 1 && args[0] == "--self-test")
         {
-            DisplayTimeoutTests.Run(); NetworkTests.Run();
+            DisplayTimeoutTests.Run(); NetworkTests.Run(); ProxyControlTests.Run();
             if (PowerControl.ModeName(PowerControl.ModeId("省电")) != "省电" || PowerControl.ModeName(PowerControl.ModeId("平衡")) != "平衡" || PowerControl.ModeName(PowerControl.ModeId("性能")) != "性能" || PowerControl.ModeName(Guid.NewGuid()) != null)
                 throw new Exception("Unknown Windows power modes must not be mislabeled");
             if (LenovoCharge.Execute("9").Mode.HasValue || LenovoCharge.Execute("9").Error == "") throw new Exception("Invalid charging writes must be rejected before loading vendor code");
@@ -331,7 +331,7 @@ public sealed partial class DotWindow : Window
             AllowsTransparency = true, Background = Brushes.Transparent, ShowInTaskbar = false, Topmost = true, Content = detail, FontFamily = FontFamily };
         InitializePowerView();
         ((Button)detail.FindName("ClosePanel")).Click += (_, _) => panel.Hide();
-        panel.Deactivated += (_, _) => { if (!IsMouseOver && !IsScreenDropDownOpen && !GroupPicker.IsDropDownOpen) panel.Hide(); };
+        panel.Deactivated += (_, _) => { if (!IsMouseOver && !IsScreenDropDownOpen) panel.Hide(); };
         MouseLeftButtonDown += (_, e) => { if (networkDot.IsMouseOver) return; pressedAt = e.GetPosition(this); dragging = false; CaptureMouse(); };
         MouseMove += (_, e) =>
         {
@@ -523,6 +523,7 @@ public sealed partial class DotWindow : Window
     {
         if (closing) return; closing = true; Save(); cancel.Cancel(); watchdog?.Stop(); powerTimer?.Stop(); networkTimer?.Stop(); proxyRequest?.Cancel();
         if (tray != null) { tray.Visible = false; tray.Dispose(); } panel.Close(); Hide();
+        if (controlOperation != null) { try { await controlOperation; } catch { } }
         if (sampling != null) { try { await sampling.WaitAsync(TimeSpan.FromSeconds(4)); } catch { } }
         System.Windows.Application.Current.Shutdown();
     }
