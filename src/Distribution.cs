@@ -56,7 +56,7 @@ internal static class Distribution
     }
     internal static void ShowHelp()
     {
-        MessageBox.Show("温度球 1.4.0 · Windows x64\n\n单击：展开详情。拖动：移动。右键：设置、隐藏或退出。\n右上角“电源 / 电池”：切换电源和养护模式；页内可选择屏幕熄灭时间。\n\nCPU 温度需要管理员权限及兼容的驱动；安装版附带官方 PawnIO 安装向导。读不到的项目显示 —。\n电池养护只支持已验证的联想组件，其他电脑请使用原厂软件。\n\n没有广告或自动联网，不会开机自启，也不会启动时自动改变电源设置。\n\n偏好和最新读数：\n" + Program.Data, "关于温度球", MessageBoxButton.OK, MessageBoxImage.Information);
+        MessageBox.Show("温度球 1.5.0 · Windows x64\n\n单击：展开详情。拖动：移动。右键：设置、隐藏或退出。\n右上角“电源 / 电池”：切换电源和养护模式；页内可选择屏幕熄灭时间。\n\nCPU 温度需要管理员权限及兼容的驱动；安装版附带官方 PawnIO 安装向导。读不到的项目显示 —。\n电池养护只支持已验证的联想组件，其他电脑请使用原厂软件。\n\n没有广告或遥测；蓝色小点可查看网速与 Clash 节点延时，延时检查可暂停，不会开机自启，也不会启动时自动改变电源设置。\n\n偏好和最新读数：\n" + Program.Data, "关于温度球", MessageBoxButton.OK, MessageBoxImage.Information);
     }
     internal static void ShowLicenses()
     {

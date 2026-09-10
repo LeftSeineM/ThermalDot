@@ -37,7 +37,7 @@ public sealed class Reading
     public double? VramTotalGiB { get; set; }
     public double? MemoryLoad => SensorReader.CapacityPercent(MemoryUsedGiB, MemoryTotalGiB);
     public double? VramLoad => SensorReader.CapacityPercent(VramUsedGiB, VramTotalGiB);
-    public string Version => "1.4.0";
+    public string Version => "1.5.0";
     public string CpuName { get; set; } = "CPU";
     public string GpuName { get; set; } = "GPU";
     public string CpuSource { get; set; } = "";
@@ -161,6 +161,8 @@ public sealed class Preferences
     public double Size { get; set; } = 96;
     public bool Locked { get; set; }
     public string Display { get; set; } = "auto";
+    public bool NetworkPaused { get; set; }
+    public string NetworkGroup { get; set; } = "";
 }
 
 public static class Program
@@ -175,6 +177,23 @@ public static class Program
         {
             Console.WriteLine(JsonSerializer.Serialize(LenovoCharge.Execute(args[1])));
             return;
+        }
+        if (args.Length == 2 && args[0] == "--network-probe")
+        {
+            var sampler = new NetworkSampler(); sampler.Read(); Thread.Sleep(1100);
+            var network = sampler.Read();
+            var proxy = ClashMonitor.Read("", CancellationToken.None).GetAwaiter().GetResult();
+            File.WriteAllText(args[1], JsonSerializer.Serialize(new { Network = network, Proxy = proxy }, Json)); return;
+        }
+        if (args.Length == 3 && args[0] == "--render-network")
+        {
+            var appPreview = new System.Windows.Application();
+            using var json = JsonDocument.Parse(File.ReadAllText(args[1]));
+            var preview = new DotWindow(preview: true);
+            preview.RenderNetworkPreview(json.RootElement.GetProperty("Network").Deserialize<NetworkReading>() ?? new(),
+                json.RootElement.GetProperty("Proxy").Deserialize<ProxyReading>() ?? new(),
+                json.RootElement.TryGetProperty("Paused", out var paused) && paused.GetBoolean(), args[2]);
+            preview.Close(); appPreview.Shutdown(); return;
         }
         if (args.Length == 2 && args[0] == "--screen-probe")
         {
@@ -213,7 +232,7 @@ public static class Program
         }
         if (args.Length == 1 && args[0] == "--self-test")
         {
-            DisplayTimeoutTests.Run();
+            DisplayTimeoutTests.Run(); NetworkTests.Run();
             if (PowerControl.ModeName(PowerControl.ModeId("省电")) != "省电" || PowerControl.ModeName(PowerControl.ModeId("平衡")) != "平衡" || PowerControl.ModeName(PowerControl.ModeId("性能")) != "性能" || PowerControl.ModeName(Guid.NewGuid()) != null)
                 throw new Exception("Unknown Windows power modes must not be mislabeled");
             if (LenovoCharge.Execute("9").Mode.HasValue || LenovoCharge.Execute("9").Error == "") throw new Exception("Invalid charging writes must be rejected before loading vendor code");
@@ -231,7 +250,7 @@ public static class Program
             var missing = new Reading(); SensorReader.ApplyNvidiaCsv(missing, "NVIDIA RTX 4060, N/A, N/A, N/A, 8192");
             if (missing.Gpu.HasValue || missing.GpuLoad.HasValue || missing.VramLoad.HasValue)
                 throw new Exception("N/A must stay unavailable");
-            File.WriteAllText(System.IO.Path.Combine(Data, "self-test.txt"), "PASS: invalid readings, zero/full/missing capacity, MiB-to-GiB conversion, NVIDIA fallback/N/A, CPU/GPU thresholds; screen timeouts: never/custom, AC/DC isolation, rollback, stale-plan protection, readback verification");
+            File.WriteAllText(System.IO.Path.Combine(Data, "self-test.txt"), "PASS: invalid readings, zero/full/missing capacity, MiB-to-GiB conversion, NVIDIA fallback/N/A, CPU/GPU thresholds; network: rate/reset/units, local-only controller, nested groups, mode and unavailable handling; screen timeouts: never/custom, AC/DC isolation, rollback, stale-plan protection, readback verification");
             return;
         }
         if (args.Length == 3 && args[0] == "--render")
@@ -312,8 +331,8 @@ public sealed partial class DotWindow : Window
             AllowsTransparency = true, Background = Brushes.Transparent, ShowInTaskbar = false, Topmost = true, Content = detail, FontFamily = FontFamily };
         InitializePowerView();
         ((Button)detail.FindName("ClosePanel")).Click += (_, _) => panel.Hide();
-        panel.Deactivated += (_, _) => { if (!IsMouseOver && !IsScreenDropDownOpen) panel.Hide(); };
-        MouseLeftButtonDown += (_, e) => { pressedAt = e.GetPosition(this); dragging = false; CaptureMouse(); };
+        panel.Deactivated += (_, _) => { if (!IsMouseOver && !IsScreenDropDownOpen && !GroupPicker.IsDropDownOpen) panel.Hide(); };
+        MouseLeftButtonDown += (_, e) => { if (networkDot.IsMouseOver) return; pressedAt = e.GetPosition(this); dragging = false; CaptureMouse(); };
         MouseMove += (_, e) =>
         {
             if (e.LeftButton == MouseButtonState.Pressed && IsMouseCaptured && !prefs.Locked && (e.GetPosition(this) - pressedAt).Length > 5)
@@ -323,17 +342,19 @@ public sealed partial class DotWindow : Window
                 ClampToScreen(); Save();
             }
         };
-        MouseLeftButtonUp += (_, _) => { ReleaseMouseCapture(); if (!dragging) TogglePanel(); dragging = false; };
+        MouseLeftButtonUp += (_, _) => { if (networkDot.IsMouseOver) return; ReleaseMouseCapture(); if (!dragging) TogglePanel(); dragging = false; };
         MouseRightButtonUp += (_, _) => { ContextMenu = MakeMenu(); ContextMenu.IsOpen = true; };
         KeyDown += (_, e) => { if (e.Key == Key.Escape) panel.Hide(); };
         Loaded += (_, _) => { sampling = Task.Run(SampleLoop); };
         Closed += (_, _) => { if (!isPreview) Quit(); };
         if (preview) return;
         tray = new Forms.NotifyIcon { Text = "温度球 · 正在读取", Icon = MakeTrayIcon(), Visible = true };
-        tray.DoubleClick += (_, _) => Dispatcher.BeginInvoke(new Action(() => { Show(); Activate(); }));
+        tray.DoubleClick += (_, _) => Dispatcher.BeginInvoke(new Action(() => { RestoreDot(); }));
         var trayMenu = new Forms.ContextMenuStrip();
-        trayMenu.Items.Add("显示温度球", null, (_, _) => Dispatcher.BeginInvoke(new Action(() => { Show(); Activate(); })));
-        trayMenu.Items.Add("温度详情", null, (_, _) => Dispatcher.BeginInvoke(new Action(() => { Show(); TogglePanel(true); })));
+        trayMenu.Items.Add("显示温度球", null, (_, _) => Dispatcher.BeginInvoke(new Action(() => { RestoreDot(); })));
+        trayMenu.Items.Add("找回球球（重置位置）", null, (_, _) => Dispatcher.BeginInvoke(new Action(() => RestoreDot(true))));
+        trayMenu.Items.Add("网络与节点", null, (_, _) => Dispatcher.BeginInvoke(new Action(() => { RestoreDot(); TogglePanel(true); ShowNetworkView(); })));
+        trayMenu.Items.Add("温度详情", null, (_, _) => Dispatcher.BeginInvoke(new Action(() => { RestoreDot(); ShowTemperatureView(); TogglePanel(true); })));
         trayMenu.Items.Add("退出", null, (_, _) => Dispatcher.BeginInvoke(new Action(Quit)));
         tray.ContextMenuStrip = trayMenu;
         watchdog = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -341,7 +362,7 @@ public sealed partial class DotWindow : Window
         {
             if ((DateTime.Now - latest.Time).TotalSeconds > 12) UpdateUi(true);
             var requestFile = System.IO.Path.Combine(Program.Data, "show.request");
-            try { var req = File.Exists(requestFile) ? File.ReadAllText(requestFile) : ""; if (req != "" && req != showRequest) { showRequest = req; Show(); Activate(); } } catch { }
+            try { var req = File.Exists(requestFile) ? File.ReadAllText(requestFile) : ""; if (req != "" && req != showRequest) { showRequest = req; RestoreDot(); } } catch { }
         };
         watchdog.Start();
     }
@@ -475,7 +496,9 @@ public sealed partial class DotWindow : Window
     {
         var menu = new ContextMenu();
         void Item(string label, Action action, bool isChecked = false) { var i = new MenuItem { Header = label, IsChecked = isChecked }; i.Click += (_, _) => action(); menu.Items.Add(i); }
-        Item("查看温度详情", () => TogglePanel(true));
+        Item("查看温度详情", () => { ShowTemperatureView(); TogglePanel(true); });
+        Item("网络与节点", () => { TogglePanel(true); ShowNetworkView(); });
+        Item("找回球球（重置位置）", () => RestoreDot(true));
         Item("电源与电池", () => { TogglePanel(true); ShowPowerView(); });
         Item("屏幕熄灭时间", () => { TogglePanel(true); ShowScreenView(); });
         Item("CPU 温度读取组件…", Distribution.OpenCpuComponent);
@@ -498,7 +521,7 @@ public sealed partial class DotWindow : Window
     }
     private async void Quit()
     {
-        if (closing) return; closing = true; Save(); cancel.Cancel(); watchdog?.Stop(); powerTimer?.Stop();
+        if (closing) return; closing = true; Save(); cancel.Cancel(); watchdog?.Stop(); powerTimer?.Stop(); networkTimer?.Stop(); proxyRequest?.Cancel();
         if (tray != null) { tray.Visible = false; tray.Dispose(); } panel.Close(); Hide();
         if (sampling != null) { try { await sampling.WaitAsync(TimeSpan.FromSeconds(4)); } catch { } }
         System.Windows.Application.Current.Shutdown();
@@ -528,6 +551,9 @@ public sealed partial class DotWindow : Window
     <TextBlock x:Name="Number" Text="—" Foreground="White" FontFamily="Segoe UI" FontSize="28" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="2,-3,0,-1"/>
     <TextBlock x:Name="Foot" Text="连接中" Foreground="#98B7BD" FontSize="8" HorizontalAlignment="Center"/>
   </StackPanel>
+  <Button x:Name="NetworkDot" Width="18" Height="18" Background="#88B9FF" BorderThickness="0" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,5,0" Cursor="Hand" AutomationProperties.Name="打开网络与节点">
+   <Button.Template><ControlTemplate TargetType="Button"><Grid Background="Transparent"><Ellipse Width="10" Height="10" Fill="{TemplateBinding Background}" Stroke="#162C3D" StrokeThickness="2"><Ellipse.Effect><DropShadowEffect Color="#7AB9ED" BlurRadius="5" ShadowDepth="0" Opacity="0.35"/></Ellipse.Effect></Ellipse></Grid></ControlTemplate></Button.Template>
+  </Button>
   <Ellipse x:Name="Status" Width="8" Height="8" Fill="#7E93A8" Stroke="#182733" StrokeThickness="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16,16"/>
 </Grid>
 """;

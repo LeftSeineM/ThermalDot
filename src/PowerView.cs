@@ -27,9 +27,9 @@ public sealed partial class DotWindow
         powerView = (Grid)XamlReader.Parse(PowerXaml);
         panel.Content = null;
         var pages = new Grid(); pages.Children.Add(detail); pages.Children.Add(powerView);
-        powerView.Visibility = Visibility.Collapsed; InitializeScreenView(pages); panel.Content = pages;
+        powerView.Visibility = Visibility.Collapsed; InitializeScreenView(pages); InitializeNetworkView(pages); panel.Content = pages;
         ((Button)detail.FindName("OpenPower")).Click += (_, _) => ShowPowerView();
-        PowerButton("Back").Click += (_, _) => { powerView.Visibility = Visibility.Collapsed; detail.Visibility = Visibility.Visible; };
+        PowerButton("Back").Click += (_, _) => { ShowTemperatureView(); };
         PowerButton("OpenScreen").Click += (_, _) => ShowScreenView();
         PowerButton("ClosePower").Click += (_, _) => panel.Hide();
         PowerButton("Efficiency").Click += async (_, _) => await ChangePower("省电");
@@ -47,7 +47,7 @@ public sealed partial class DotWindow
     }
     private async void ShowPowerView()
     {
-        screenView.Visibility = Visibility.Collapsed; detail.Visibility = Visibility.Collapsed; powerView.Visibility = Visibility.Visible;
+        networkView.Visibility = Visibility.Collapsed; screenView.Visibility = Visibility.Collapsed; detail.Visibility = Visibility.Collapsed; powerView.Visibility = Visibility.Visible;
         if (!isPreview) await RefreshPower();
     }
     private async Task RefreshPower()

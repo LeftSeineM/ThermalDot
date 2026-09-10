@@ -43,7 +43,7 @@ public sealed partial class DotWindow
     }
     private void ShowScreenView()
     {
-        detail.Visibility = Visibility.Collapsed; powerView.Visibility = Visibility.Collapsed;
+        networkView.Visibility = Visibility.Collapsed; detail.Visibility = Visibility.Collapsed; powerView.Visibility = Visibility.Collapsed;
         screenView.Visibility = Visibility.Visible;
         if (!screenBusy) LoadScreen(isPreview ? screenState : DisplayTimeout.Read());
     }

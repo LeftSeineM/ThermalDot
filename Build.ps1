@@ -22,4 +22,4 @@ if ($LASTEXITCODE -ne 0) { throw 'Dependency restore failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Application build failed' }
 & $InnoCompiler (Join-Path $root 'setup.iss') /Qp
 if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
-Write-Output ('Installer: ' + (Join-Path $root 'release\温度球-1.4.0-安装版.exe'))
+Write-Output ('Installer: ' + (Join-Path $root 'release\温度球-1.5.0-安装版.exe'))
